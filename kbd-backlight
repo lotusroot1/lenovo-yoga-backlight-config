@@ -30,7 +30,7 @@ check_acpi_call() {
 
 kblc() {
     printf '%s %s' "$KBLC_METHOD" "$1" > "$PROC_CALL"
-    cat "$PROC_CALL"
+    tr -d '\0' < "$PROC_CALL"
 }
 
 get() {
