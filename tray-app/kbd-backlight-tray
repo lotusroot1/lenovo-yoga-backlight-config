@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""
+kbd-backlight-tray  v1.0
+System tray icon for Lenovo Yoga 9i Gen 7 keyboard backlight control.
+
+Right-click the tray icon to see current state and switch modes.
+Double-click (v2: opens settings window — not yet implemented).
+
+Requires: python3-gi, sudo passwordless access to kbd-backlight
+Optional: gir1.2-appindicator3-0.1 (better tray integration on Cinnamon)
+"""
+
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, GLib, GdkPixbuf
+
+import subprocess
+import sys
+import os
+
+# State ordering for the menu (most useful first)
+STATES = [
+    ('auto', 'Auto  (ambient light sensor)'),
+    ('on',   'On'),
+    ('dim',  'Dim'),
+    ('off',  'Off'),
+]
+
+KBD_CMD = '/usr/local/bin/kbd-backlight'
+REFRESH_SECONDS = 4
+
+# Try AppIndicator3 (best on Cinnamon), fall back to StatusIcon
+try:
+    gi.require_version('AppIndicator3', '0.1')
+    from gi.repository import AppIndicator3
+    HAS_APPINDICATOR = True
+except (ValueError, ImportError):
+    HAS_APPINDICATOR = False
+
+
+# ── backend ──────────────────────────────────────────────────────────────────
+
+def _run(args):
+    try:
+        r = subprocess.run(
+            ['sudo', KBD_CMD] + args,
+            capture_output=True, text=True, timeout=5
+        )
+        return r.stdout.strip(), r.returncode == 0
+    except FileNotFoundError:
+        return 'kbd-backlight not installed', False
+    except subprocess.TimeoutExpired:
+        return 'timeout', False
+    except Exception as e:
+        return str(e), False
+
+def get_state():
+    out, ok = _run(['get'])
+    return out if ok else 'error'
+
+def set_state(state):
+    _, ok = _run(['set', state])
+    return ok
+
+
+# ── tray app ─────────────────────────────────────────────────────────────────
+
+class KbdBacklightTray:
+    def __init__(self):
+        self._updating = False
+        self._build_menu()
+
+        if HAS_APPINDICATOR:
+            self.indicator = AppIndicator3.Indicator.new(
+                'kbd-backlight-tray',
+                'input-keyboard',
+                AppIndicator3.IndicatorCategory.HARDWARE,
+            )
+            self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+            self.indicator.set_menu(self.menu)
+        else:
+            self.status_icon = Gtk.StatusIcon.new_from_icon_name('input-keyboard')
+            self.status_icon.set_tooltip_text('Keyboard Backlight')
+            self.status_icon.connect('popup-menu', self._on_statusicon_popup)
+            # double-click placeholder for v2
+            self.status_icon.connect('activate', self._on_activate)
+
+        self.refresh_state()
+        GLib.timeout_add_seconds(REFRESH_SECONDS, self.refresh_state)
+
+    # ── menu ─────────────────────────────────────────────────────────────────
+
+    def _build_menu(self):
+        self.menu = Gtk.Menu()
+
+        # Header (non-interactive)
+        header = Gtk.MenuItem(label='⌨  Keyboard Backlight')
+        header.set_sensitive(False)
+        self.menu.append(header)
+
+        self.state_item = Gtk.MenuItem(label='Current: …')
+        self.state_item.set_sensitive(False)
+        self.menu.append(self.state_item)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # State radio items
+        self.radio = {}
+        group = None
+        for key, label in STATES:
+            item = Gtk.RadioMenuItem.new_with_label(group, label)
+            if group is None:
+                group = item.get_group()
+            item.connect('toggled', self._on_toggled, key)
+            self.menu.append(item)
+            self.radio[key] = item
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        quit_item = Gtk.MenuItem(label='Quit')
+        quit_item.connect('activate', lambda _: Gtk.main_quit())
+        self.menu.append(quit_item)
+
+        self.menu.show_all()
+
+    # ── callbacks ────────────────────────────────────────────────────────────
+
+    def _on_statusicon_popup(self, icon, button, time):
+        self.menu.popup(
+            None, None,
+            Gtk.StatusIcon.position_menu, icon,
+            button, time,
+        )
+
+    def _on_activate(self, icon):
+        # v2: open settings window on double-click
+        pass
+
+    def _on_toggled(self, widget, state):
+        if not self._updating and widget.get_active():
+            if set_state(state):
+                self.state_item.set_label(f'Current: {state}')
+
+    # ── state refresh ────────────────────────────────────────────────────────
+
+    def refresh_state(self):
+        state = get_state()
+        self.state_item.set_label(f'Current: {state}')
+
+        if state in self.radio:
+            self._updating = True
+            self.radio[state].set_active(True)
+            self._updating = False
+
+        if HAS_APPINDICATOR:
+            self.indicator.set_title(f'Keyboard: {state}')
+
+        return True  # keep GLib timeout alive
+
+
+# ── entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    if not os.path.isfile(KBD_CMD):
+        dialog = Gtk.MessageDialog(
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.CLOSE,
+            text='kbd-backlight not found',
+        )
+        dialog.format_secondary_text(
+            f'{KBD_CMD} does not exist.\n'
+            'Run sudo ./install.sh from the repo root first.'
+        )
+        dialog.run()
+        sys.exit(1)
+
+    KbdBacklightTray()
+    Gtk.main()
+
+if __name__ == '__main__':
+    main()
