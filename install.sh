@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── install locations (change here to relocate everything) ───────────────────
+KBD_BIN=/usr/local/bin/kbd-backlight
+SERVICE_FILE=/etc/systemd/system/kbd-backlight.service
+MODULES_CONF=/etc/modules-load.d/acpi_call.conf
+SUDOERS_FILE=/etc/sudoers.d/kbd-backlight
+# ─────────────────────────────────────────────────────────────────────────────
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USER="${SUDO_USER:-$USER}"
+INSTALL_USER="${SUDO_USER:-$USER}"
 STARTUP_STATE="${1:-auto}"
 
 case "$STARTUP_STATE" in
@@ -10,22 +17,22 @@ case "$STARTUP_STATE" in
     *) echo "ERROR: invalid state '$STARTUP_STATE' — use: off, dim, on, auto" >&2; exit 1 ;;
 esac
 
-echo "==> Installing kbd-backlight to /usr/local/bin/"
-install -m 755 "$SCRIPT_DIR/kbd-backlight" /usr/local/bin/kbd-backlight
+echo "==> Installing kbd-backlight to $KBD_BIN"
+install -m 755 "$SCRIPT_DIR/kbd-backlight" "$KBD_BIN"
 
 echo "==> Configuring acpi_call to load at boot"
-echo "acpi_call" > /etc/modules-load.d/acpi_call.conf
+echo "acpi_call" > "$MODULES_CONF"
 
 echo "==> Installing systemd service (startup state: $STARTUP_STATE)"
-cat > /etc/systemd/system/kbd-backlight.service <<EOF
+cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Set keyboard backlight state on boot
 After=systemd-modules-load.service
 
 [Service]
 Type=oneshot
-ExecStartPre=/sbin/modprobe acpi_call
-ExecStart=/usr/local/bin/kbd-backlight set $STARTUP_STATE
+ExecStartPre=modprobe acpi_call
+ExecStart=$KBD_BIN set $STARTUP_STATE
 RemainAfterExit=yes
 
 [Install]
@@ -36,20 +43,14 @@ systemctl daemon-reload
 systemctl enable kbd-backlight.service
 
 echo "==> Adding passwordless sudo rule for kbd-backlight"
-echo "$USER ALL=(ALL) NOPASSWD: /usr/local/bin/kbd-backlight" \
-    > /etc/sudoers.d/kbd-backlight
-chmod 440 /etc/sudoers.d/kbd-backlight
+echo "$INSTALL_USER ALL=(ALL) NOPASSWD: $KBD_BIN" > "$SUDOERS_FILE"
+chmod 440 "$SUDOERS_FILE"
 
 echo ""
-echo "Done. Startup state set to: $STARTUP_STATE"
+echo "Done. Startup state: $STARTUP_STATE"
 echo ""
 echo "Usage (no password needed):"
 echo "  sudo kbd-backlight get"
 echo "  sudo kbd-backlight set auto"
-echo "  sudo kbd-backlight set on"
-echo "  sudo kbd-backlight set dim"
-echo "  sudo kbd-backlight set off"
 echo ""
-echo "To change the startup state, re-run:"
-echo "  sudo ./install.sh <state>"
-echo "(e.g. sudo ./install.sh on)"
+echo "To change the startup state: sudo ./install.sh <state>"

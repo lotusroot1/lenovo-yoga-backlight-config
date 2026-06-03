@@ -153,18 +153,30 @@ auto mode.
 
 ### Step 1 — system install (run once, as root)
 
+Install the `acpi_call` kernel module (required at runtime):
+
+| Distro | Command |
+|---|---|
+| Debian / Ubuntu / Linux Mint | `sudo apt install acpi-call-dkms` |
+| Fedora | `sudo dnf install akmod-acpi_call` |
+| Arch | `sudo pacman -S acpi_call-dkms` |
+
+Then run the installer:
+
 ```bash
-sudo apt install acpi-call-dkms
 sudo ./install.sh [state]     # default startup state: auto
 ```
 
 Override startup state: `sudo ./install.sh on`
 
-Installs:
+Installs (paths defined as constants at top of `install.sh`):
 - `/usr/local/bin/kbd-backlight` — control script
 - `/etc/modules-load.d/acpi_call.conf` — loads `acpi_call` at boot
 - `/etc/systemd/system/kbd-backlight.service` — sets state at boot
 - `/etc/sudoers.d/kbd-backlight` — passwordless sudo for the script
+
+> To install to a different prefix, edit the path constants at the top
+> of `install.sh` and `uninstall.sh` before running.
 
 ### Step 2 — tray app (optional, run as your normal user)
 
@@ -172,12 +184,20 @@ Installs:
 cd tray-app && ./install.sh
 ```
 
-Requires Step 1 to be done first (the tray app calls `kbd-backlight` via sudo).
+Requires Step 1 first. The script checks for its prerequisites and will
+tell you what's missing if Step 1 hasn't been run.
 
 Installs:
 - `~/.local/bin/kbd-backlight-tray` — GTK tray icon app
 - `~/.config/autostart/kbd-backlight-tray.desktop` — autostart at login
-- `gir1.2-appindicator3-0.1` if not already present
+
+AppIndicator3 (better Cinnamon tray integration) is optional — the app
+falls back to `Gtk.StatusIcon` if not present:
+
+| Distro | Command |
+|---|---|
+| Debian / Ubuntu / Linux Mint | `sudo apt install gir1.2-appindicator3-0.1` |
+| Fedora | `sudo dnf install libappindicator-gtk3` |
 
 Launch immediately after install: `~/.local/bin/kbd-backlight-tray &`
 
@@ -191,5 +211,9 @@ sudo ./uninstall.sh     # removes system install + tray app
 
 ## Dependencies
 
-- `acpi-call-dkms` — kernel module for direct ACPI method calls (runtime)
-- `acpica-tools` — used during research to decompile DSDT (not needed at runtime)
+| Package | Purpose | Required |
+|---|---|---|
+| `acpi-call-dkms` | Direct ACPI method calls at runtime | Yes |
+| `python3-gi` | GTK bindings for tray app | Tray app only |
+| `gir1.2-appindicator3-0.1` | Better Cinnamon tray integration | Optional |
+| `acpica-tools` | DSDT decompilation (research only) | No |
