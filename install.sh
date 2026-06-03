@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER="${SUDO_USER:-$USER}"
 STARTUP_STATE="${1:-auto}"
 
+case "$STARTUP_STATE" in
+    off|dim|on|auto) ;;
+    *) echo "ERROR: invalid state '$STARTUP_STATE' — use: off, dim, on, auto" >&2; exit 1 ;;
+esac
+
 echo "==> Installing kbd-backlight to /usr/local/bin/"
 install -m 755 "$SCRIPT_DIR/kbd-backlight" /usr/local/bin/kbd-backlight
 
