@@ -1,22 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── must match install.sh ────────────────────────────────────────────────────
-KBD_BIN=/usr/local/bin/kbd-backlight
-SERVICE_FILE=/etc/systemd/system/kbd-backlight.service
-MODULES_CONF=/etc/modules-load.d/acpi_call.conf
-SUDOERS_FILE=/etc/sudoers.d/kbd-backlight
-# ─────────────────────────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
-# Tray app (user-level — no sudo needed)
-TRAY_BIN="$HOME/.local/bin/kbd-backlight-tray"
-TRAY_DESKTOP="$HOME/.config/autostart/kbd-backlight-tray.desktop"
+# ── preflight: report what will actually be removed ───────────────────────────
+echo "==> Checking what is installed"
+present=()
+absent=()
+
+for path in "$KBD_BIN" "$SERVICE_FILE" "$MODULES_CONF" "$SUDOERS_FILE" \
+            "$TRAY_BIN" "$TRAY_DESKTOP"; do
+    if [ -e "$path" ]; then
+        present+=("$path")
+    else
+        absent+=("$path")
+    fi
+done
+
+if [ "${#present[@]}" -eq 0 ]; then
+    echo "Nothing from this installer found on the system. Nothing to do."
+    exit 0
+fi
+
+echo "    Will remove:"
+for p in "${present[@]}"; do echo "      $p"; done
+
+if [ "${#absent[@]}" -gt 0 ]; then
+    echo "    Already absent (skipping):"
+    for a in "${absent[@]}"; do echo "      $a"; done
+fi
+echo ""
+
+# ── tray app (user-level) ─────────────────────────────────────────────────────
 if [ -f "$TRAY_BIN" ] || [ -f "$TRAY_DESKTOP" ]; then
     echo "==> Removing tray app"
     pkill -f kbd-backlight-tray 2>/dev/null || true
     rm -f "$TRAY_BIN" "$TRAY_DESKTOP"
 fi
 
+# ── system install ────────────────────────────────────────────────────────────
 echo "==> Stopping and disabling kbd-backlight service"
 systemctl disable --now kbd-backlight.service 2>/dev/null || true
 rm -f "$SERVICE_FILE"
