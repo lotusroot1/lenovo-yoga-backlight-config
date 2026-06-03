@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Also remove tray app if present (user-level, no sudo needed for those)
+TRAY_BIN="$HOME/.local/bin/kbd-backlight-tray"
+TRAY_DESKTOP="$HOME/.config/autostart/kbd-backlight-tray.desktop"
+if [ -f "$TRAY_BIN" ] || [ -f "$TRAY_DESKTOP" ]; then
+    echo "==> Removing tray app"
+    pkill -f kbd-backlight-tray 2>/dev/null || true
+    rm -f "$TRAY_BIN" "$TRAY_DESKTOP"
+fi
+
 echo "==> Stopping and disabling kbd-backlight service"
 systemctl disable --now kbd-backlight.service 2>/dev/null || true
 rm -f /etc/systemd/system/kbd-backlight.service

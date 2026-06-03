@@ -151,25 +151,45 @@ auto mode.
 
 ## Installation
 
+### Step 1 — system install (run once, as root)
+
 ```bash
-sudo ./install.sh [state]
+sudo apt install acpi-call-dkms
+sudo ./install.sh [state]     # default startup state: auto
 ```
 
-Default startup state is `auto`. Override with: `sudo ./install.sh on`
+Override startup state: `sudo ./install.sh on`
 
-This installs:
+Installs:
 - `/usr/local/bin/kbd-backlight` — control script
 - `/etc/modules-load.d/acpi_call.conf` — loads `acpi_call` at boot
 - `/etc/systemd/system/kbd-backlight.service` — sets state at boot
 - `/etc/sudoers.d/kbd-backlight` — passwordless sudo for the script
 
+### Step 2 — tray app (optional, run as your normal user)
+
+```bash
+cd tray-app && ./install.sh
+```
+
+Requires Step 1 to be done first (the tray app calls `kbd-backlight` via sudo).
+
+Installs:
+- `~/.local/bin/kbd-backlight-tray` — GTK tray icon app
+- `~/.config/autostart/kbd-backlight-tray.desktop` — autostart at login
+- `gir1.2-appindicator3-0.1` if not already present
+
+Launch immediately after install: `~/.local/bin/kbd-backlight-tray &`
+
+### Uninstall everything
+
+```bash
+sudo ./uninstall.sh     # removes system install + tray app
+```
+
 ---
 
 ## Dependencies
 
-- `acpi-call-dkms` — kernel module for direct ACPI method calls
+- `acpi-call-dkms` — kernel module for direct ACPI method calls (runtime)
 - `acpica-tools` — used during research to decompile DSDT (not needed at runtime)
-
-```bash
-sudo apt install acpi-call-dkms
-```

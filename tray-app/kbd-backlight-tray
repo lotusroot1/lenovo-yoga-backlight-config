@@ -12,9 +12,10 @@ Optional: gir1.2-appindicator3-0.1 (better tray integration on Cinnamon)
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib, GdkPixbuf
+from gi.repository import Gtk, GLib
 
 import subprocess
+import shutil
 import sys
 import os
 
@@ -26,7 +27,6 @@ STATES = [
     ('off',  'Off'),
 ]
 
-KBD_CMD = '/usr/local/bin/kbd-backlight'
 REFRESH_SECONDS = 4
 
 # Try AppIndicator3 (best on Cinnamon), fall back to StatusIcon
@@ -38,17 +38,34 @@ except (ValueError, ImportError):
     HAS_APPINDICATOR = False
 
 
-# ── backend ──────────────────────────────────────────────────────────────────
+# ── locate kbd-backlight ──────────────────────────────────────────────────────
+
+def find_kbd_cmd():
+    """Return path to kbd-backlight, or None if not found."""
+    # Check PATH first (works wherever it's installed)
+    found = shutil.which('kbd-backlight')
+    if found:
+        return found
+    # Common explicit locations
+    for path in ['/usr/local/bin/kbd-backlight', '/usr/bin/kbd-backlight']:
+        if os.path.isfile(path):
+            return path
+    return None
+
+KBD_CMD = find_kbd_cmd()
+
+
+# ── backend ───────────────────────────────────────────────────────────────────
 
 def _run(args):
+    if not KBD_CMD:
+        return 'not-installed', False
     try:
         r = subprocess.run(
             ['sudo', KBD_CMD] + args,
             capture_output=True, text=True, timeout=5
         )
         return r.stdout.strip(), r.returncode == 0
-    except FileNotFoundError:
-        return 'kbd-backlight not installed', False
     except subprocess.TimeoutExpired:
         return 'timeout', False
     except Exception as e:
@@ -63,7 +80,7 @@ def set_state(state):
     return ok
 
 
-# ── tray app ─────────────────────────────────────────────────────────────────
+# ── tray app ──────────────────────────────────────────────────────────────────
 
 class KbdBacklightTray:
     def __init__(self):
@@ -82,13 +99,12 @@ class KbdBacklightTray:
             self.status_icon = Gtk.StatusIcon.new_from_icon_name('input-keyboard')
             self.status_icon.set_tooltip_text('Keyboard Backlight')
             self.status_icon.connect('popup-menu', self._on_statusicon_popup)
-            # double-click placeholder for v2
             self.status_icon.connect('activate', self._on_activate)
 
         self.refresh_state()
         GLib.timeout_add_seconds(REFRESH_SECONDS, self.refresh_state)
 
-    # ── menu ─────────────────────────────────────────────────────────────────
+    # ── menu ──────────────────────────────────────────────────────────────────
 
     def _build_menu(self):
         self.menu = Gtk.Menu()
@@ -103,6 +119,13 @@ class KbdBacklightTray:
         self.menu.append(self.state_item)
 
         self.menu.append(Gtk.SeparatorMenuItem())
+
+        # Warning shown when kbd-backlight is missing
+        self.warn_item = Gtk.MenuItem(
+            label='⚠  kbd-backlight not found — run install.sh'
+        )
+        self.warn_item.set_sensitive(False)
+        self.menu.append(self.warn_item)
 
         # State radio items
         self.radio = {}
@@ -123,7 +146,7 @@ class KbdBacklightTray:
 
         self.menu.show_all()
 
-    # ── callbacks ────────────────────────────────────────────────────────────
+    # ── callbacks ─────────────────────────────────────────────────────────────
 
     def _on_statusicon_popup(self, icon, button, time):
         self.menu.popup(
@@ -133,7 +156,7 @@ class KbdBacklightTray:
         )
 
     def _on_activate(self, icon):
-        # v2: open settings window on double-click
+        # v2: open settings window on double-click / left-click
         pass
 
     def _on_toggled(self, widget, state):
@@ -141,9 +164,20 @@ class KbdBacklightTray:
             if set_state(state):
                 self.state_item.set_label(f'Current: {state}')
 
-    # ── state refresh ────────────────────────────────────────────────────────
+    # ── state refresh ─────────────────────────────────────────────────────────
 
     def refresh_state(self):
+        installed = KBD_CMD is not None
+
+        # Show/hide warning and radio items based on whether backend exists
+        self.warn_item.set_visible(not installed)
+        for item in self.radio.values():
+            item.set_visible(installed)
+
+        if not installed:
+            self.state_item.set_label('Current: not installed')
+            return True
+
         state = get_state()
         self.state_item.set_label(f'Current: {state}')
 
@@ -161,19 +195,6 @@ class KbdBacklightTray:
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main():
-    if not os.path.isfile(KBD_CMD):
-        dialog = Gtk.MessageDialog(
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.CLOSE,
-            text='kbd-backlight not found',
-        )
-        dialog.format_secondary_text(
-            f'{KBD_CMD} does not exist.\n'
-            'Run sudo ./install.sh from the repo root first.'
-        )
-        dialog.run()
-        sys.exit(1)
-
     KbdBacklightTray()
     Gtk.main()
 
