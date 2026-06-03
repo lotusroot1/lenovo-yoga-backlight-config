@@ -1,35 +1,78 @@
 #!/usr/bin/env bash
-# Keyboard backlight control for Lenovo Yoga 9i Gen 7
-# States: off=0, dim=1, on=2
-# Note: "auto" (EC-managed inactivity dimming) is only reachable via Fn+Space;
-# it reads as 0 at the sysfs level when the keyboard is idle.
+# Keyboard backlight control for Lenovo Yoga 9i Gen 7 (14IAP7)
+# Uses ACPI KBLC method via the acpi_call kernel module for full 4-state support.
+#
+# Requires: acpi_call module loaded (added to /etc/modules-load.d/ by install.sh)
+# Must run as root or via sudo.
+#
+# States (KBLC encoding confirmed via DSDT analysis):
+#   off  → KBLC 0x33     (KBGS returns 0x1)
+#   dim  → KBLC 0x10033  (KBGS returns 0x3)
+#   on   → KBLC 0x20033  (KBGS returns 0x5)
+#   auto → KBLC 0x30033  (KBGS returns 0x10007)
+#
+# The kernel ideapad_laptop driver maps auto→0 in sysfs (same as off),
+# making it undetectable and unsettable via /sys/class/leds/platform::kbd_backlight.
+# Direct KBLC calls bypass this limitation.
 
-BRIGHTNESS=/sys/class/leds/platform::kbd_backlight/brightness
+KBLC_METHOD='\\_SB.PC00.LPCB.EC0.VPC0.KBLC'
+PROC_CALL=/proc/acpi/call
 
 die() { echo "kbd-backlight: $*" >&2; exit 1; }
 
+check_acpi_call() {
+    if [ ! -f "$PROC_CALL" ]; then
+        modprobe acpi_call 2>/dev/null
+    fi
+    [ -f "$PROC_CALL" ] || die "acpi_call module not loaded (sudo modprobe acpi_call)"
+    [ -w "$PROC_CALL" ] || die "cannot write $PROC_CALL — run as root"
+}
+
+kblc() {
+    printf '%s %s' "$KBLC_METHOD" "$1" > "$PROC_CALL"
+    cat "$PROC_CALL"
+}
+
 get() {
-    [ -r "$BRIGHTNESS" ] || die "cannot read $BRIGHTNESS"
-    local val
-    val=$(cat "$BRIGHTNESS")
-    case $val in
+    check_acpi_call
+    local result val state
+    result=$(kblc 0x32)
+    # KBLC returns KBGS|1; state is encoded in bits 2:1 of the return value.
+    # Bit 0x10000 is always set in KBGS and is ignored here.
+    val=$(( result + 0 ))
+    state=$(( (val & 0xFFFE) >> 1 ))
+    case "$state" in
         0) echo "off" ;;
         1) echo "dim" ;;
         2) echo "on"  ;;
-        *) echo "unknown ($val)" ;;
+        3) echo "auto" ;;
+        *) echo "unknown (raw=$result)" ;;
     esac
 }
 
 set_state() {
-    [ -w "$BRIGHTNESS" ] || die "cannot write $BRIGHTNESS (not in 'input' group, or udev rule not installed?)"
-    local val
-    case $1 in
-        off|0) val=0 ;;
-        dim|1) val=1 ;;
-        on|2)  val=2 ;;
-        *) die "unknown state '$1' — use: off, dim, on  (or 0, 1, 2)" ;;
+    check_acpi_call
+    local arg
+    case "$1" in
+        off|0)  arg=0x33    ;;
+        dim|1)  arg=0x10033 ;;
+        on|2)   arg=0x20033 ;;
+        auto|3) arg=0x30033 ;;
+        *) die "unknown state '$1' — use: off, dim, on, auto  (or 0-3)" ;;
     esac
-    echo "$val" > "$BRIGHTNESS"
+    kblc "$arg" > /dev/null
+}
+
+toggle() {
+    local current
+    current=$(get)
+    case "$current" in
+        off)  set_state dim  ;;
+        dim)  set_state on   ;;
+        on)   set_state auto ;;
+        auto) set_state off  ;;
+        *)    set_state off  ;;
+    esac
 }
 
 usage() {
@@ -37,19 +80,12 @@ usage() {
 Usage: kbd-backlight <command> [state]
 
 Commands:
-  get          print current state (off|dim|on)
-  set <state>  set state: off, dim, on  (or 0, 1, 2)
-  toggle       cycle off → dim → on → off
+  get          print current state (off|dim|on|auto)
+  set <state>  set state: off, dim, on, auto  (or 0, 1, 2, 3)
+  toggle       cycle off → dim → on → auto → off
 
-Note: the firmware "auto" mode (dims after inactivity) is only reachable
-via Fn+Space and cannot be set programmatically.
+Must be run as root (or via sudo).
 EOF
-}
-
-toggle() {
-    local val
-    val=$(cat "$BRIGHTNESS")
-    set_state $(( (val + 1) % 3 ))
 }
 
 case ${1:-} in

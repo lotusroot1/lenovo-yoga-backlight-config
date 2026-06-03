@@ -1,5 +1,0 @@
-# Grant the 'input' group write access to the Lenovo Yoga keyboard backlight.
-# Installed to /etc/udev/rules.d/90-kbd-backlight.rules
-SUBSYSTEM=="leds", KERNEL=="platform::kbd_backlight", \
-    RUN+="/bin/chgrp input /sys%p/brightness", \
-    RUN+="/bin/chmod g+w /sys%p/brightness"

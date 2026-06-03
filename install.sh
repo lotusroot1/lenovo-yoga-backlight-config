@@ -3,27 +3,48 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER="${SUDO_USER:-$USER}"
+STARTUP_STATE="${1:-auto}"
 
-echo "==> Installing kbd-backlight script to /usr/local/bin/"
+echo "==> Installing kbd-backlight to /usr/local/bin/"
 install -m 755 "$SCRIPT_DIR/kbd-backlight" /usr/local/bin/kbd-backlight
 
-echo "==> Installing udev rule to /etc/udev/rules.d/"
-install -m 644 "$SCRIPT_DIR/90-kbd-backlight.rules" /etc/udev/rules.d/90-kbd-backlight.rules
+echo "==> Configuring acpi_call to load at boot"
+echo "acpi_call" > /etc/modules-load.d/acpi_call.conf
 
-echo "==> Adding $USER to 'input' group"
-usermod -aG input "$USER"
+echo "==> Installing systemd service (startup state: $STARTUP_STATE)"
+cat > /etc/systemd/system/kbd-backlight.service <<EOF
+[Unit]
+Description=Set keyboard backlight state on boot
+After=systemd-modules-load.service
 
-echo "==> Reloading udev rules"
-udevadm control --reload-rules
-udevadm trigger --subsystem-match=leds
+[Service]
+Type=oneshot
+ExecStartPre=/sbin/modprobe acpi_call
+ExecStart=/usr/local/bin/kbd-backlight set $STARTUP_STATE
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable kbd-backlight.service
+
+echo "==> Adding passwordless sudo rule for kbd-backlight"
+echo "$USER ALL=(ALL) NOPASSWD: /usr/local/bin/kbd-backlight" \
+    > /etc/sudoers.d/kbd-backlight
+chmod 440 /etc/sudoers.d/kbd-backlight
 
 echo ""
-echo "Done. Changes take effect:"
-echo "  • Udev rule: immediately (backlight file is now group-writable)"
-echo "  • Group membership: after next login"
+echo "Done. Startup state set to: $STARTUP_STATE"
 echo ""
-echo "To set backlight on login, add this line to ~/.profile:"
-echo "  kbd-backlight set on"
-echo ""
-echo "Test now (without re-login) with:"
+echo "Usage (no password needed):"
+echo "  sudo kbd-backlight get"
+echo "  sudo kbd-backlight set auto"
 echo "  sudo kbd-backlight set on"
+echo "  sudo kbd-backlight set dim"
+echo "  sudo kbd-backlight set off"
+echo ""
+echo "To change the startup state, re-run:"
+echo "  sudo ./install.sh <state>"
+echo "(e.g. sudo ./install.sh on)"
