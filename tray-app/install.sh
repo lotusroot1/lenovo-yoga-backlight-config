@@ -77,8 +77,22 @@ StartupNotify=false
 X-GNOME-Autostart-enabled=true
 EOF
 
+echo "==> Adding application menu entry ($TRAY_APPENTRY)"
+[ -d "$(dirname "$TRAY_APPENTRY")" ] || mkdir -p "$(dirname "$TRAY_APPENTRY")"
+cat > "$TRAY_APPENTRY" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Keyboard Backlight Tray
+Comment=System tray control for Yoga 9i Gen 7 keyboard backlight
+Exec=$TRAY_BIN
+Icon=input-keyboard
+Categories=Utility;HardwareSettings;
+StartupNotify=false
+EOF
+
 echo ""
 echo "Done."
 echo "  Launch now:   $TRAY_BIN &"
+echo "  Find in menu: search for 'Keyboard Backlight' in your application launcher"
 echo "  Autostart:    active at next login"
 echo "  Uninstall:    sudo '$REPO_ROOT/uninstall.sh'  (removes everything)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-kbd-backlight-tray  v1.0
+kbd-backlight-tray  v1.1
 System tray icon for Lenovo Yoga 9i Gen 7 keyboard backlight control.
 
 Right-click the tray icon to see current state and switch modes.
@@ -18,6 +18,45 @@ import subprocess
 import shutil
 import sys
 import os
+
+TRAY_DESKTOP = os.path.expanduser('~/.config/autostart/kbd-backlight-tray.desktop')
+
+
+def _autostart_exec():
+    """Return the exec path to write into the .desktop file."""
+    found = shutil.which('kbd-backlight-tray')
+    if found:
+        return found
+    candidate = os.path.expanduser('~/.local/bin/kbd-backlight-tray')
+    if os.path.isfile(candidate):
+        return candidate
+    return sys.argv[0]
+
+
+def is_autostart_enabled():
+    return os.path.isfile(TRAY_DESKTOP)
+
+
+def set_autostart(enabled):
+    if enabled:
+        os.makedirs(os.path.dirname(TRAY_DESKTOP), exist_ok=True)
+        exec_path = _autostart_exec()
+        with open(TRAY_DESKTOP, 'w') as f:
+            f.write(
+                '[Desktop Entry]\n'
+                'Type=Application\n'
+                'Name=Keyboard Backlight Tray\n'
+                'Comment=System tray control for Yoga 9i Gen 7 keyboard backlight\n'
+                f'Exec={exec_path}\n'
+                'Icon=input-keyboard\n'
+                'StartupNotify=false\n'
+                'X-GNOME-Autostart-enabled=true\n'
+            )
+    else:
+        try:
+            os.remove(TRAY_DESKTOP)
+        except FileNotFoundError:
+            pass
 
 # State ordering for the menu (most useful first)
 STATES = [
@@ -140,6 +179,13 @@ class KbdBacklightTray:
 
         self.menu.append(Gtk.SeparatorMenuItem())
 
+        self.startup_item = Gtk.CheckMenuItem(label='Run on startup')
+        self.startup_item.set_active(is_autostart_enabled())
+        self.startup_item.connect('toggled', self._on_startup_toggled)
+        self.menu.append(self.startup_item)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
         quit_item = Gtk.MenuItem(label='Quit')
         quit_item.connect('activate', lambda _: Gtk.main_quit())
         self.menu.append(quit_item)
@@ -163,6 +209,9 @@ class KbdBacklightTray:
         if not self._updating and widget.get_active():
             if set_state(state):
                 self.state_item.set_label(f'Current: {state}')
+
+    def _on_startup_toggled(self, widget):
+        set_autostart(widget.get_active())
 
     # ── state refresh ─────────────────────────────────────────────────────────
 

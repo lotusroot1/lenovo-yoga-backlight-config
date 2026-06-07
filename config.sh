@@ -10,3 +10,4 @@ SUDOERS_FILE=/etc/sudoers.d/kbd-backlight
 # Tray app (user-level)
 TRAY_BIN="$HOME/.local/bin/kbd-backlight-tray"
 TRAY_DESKTOP="$HOME/.config/autostart/kbd-backlight-tray.desktop"
+TRAY_APPENTRY="$HOME/.local/share/applications/kbd-backlight-tray.desktop"
