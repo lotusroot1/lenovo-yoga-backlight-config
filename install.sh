@@ -59,6 +59,26 @@ EOF
 systemctl daemon-reload
 systemctl enable kbd-backlight.service
 
+echo "==> Installing suspend/resume hook ($SLEEP_HOOK)"
+cat > "$SLEEP_HOOK" <<'EOF'
+#!/usr/bin/env bash
+# Saves backlight state before suspend; restores it after resume.
+KBD_BIN=/usr/local/bin/kbd-backlight
+STATE_FILE=/run/kbd-backlight-suspend-state
+
+case "$1" in
+    pre)
+        "$KBD_BIN" get > "$STATE_FILE" 2>/dev/null || true
+        ;;
+    post)
+        if [ -f "$STATE_FILE" ]; then
+            "$KBD_BIN" set "$(cat "$STATE_FILE")" 2>/dev/null || true
+        fi
+        ;;
+esac
+EOF
+chmod 755 "$SLEEP_HOOK"
+
 echo "==> Adding passwordless sudo rule ($SUDOERS_FILE)"
 echo "$INSTALL_USER ALL=(ALL) NOPASSWD: $KBD_BIN" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"

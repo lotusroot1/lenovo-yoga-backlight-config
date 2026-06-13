@@ -61,6 +61,21 @@ else
     echo "    AppIndicator3 present"
 fi
 
+if ! python3 -c "
+import gi
+gi.require_version('Notify','0.7')
+from gi.repository import Notify
+" 2>/dev/null; then
+    echo "    libnotify not found — Fn+Space state-change notifications disabled"
+    echo "    To enable desktop notifications, install it:"
+    echo "      Debian/Ubuntu/Mint:  sudo apt install gir1.2-notify-0.7"
+    echo "      Fedora:              sudo dnf install libnotify"
+    echo "      Arch:                sudo pacman -S libnotify"
+    echo "    (continuing without it)"
+else
+    echo "    libnotify present"
+fi
+
 # ── install ───────────────────────────────────────────────────────────────────
 echo "==> Installing to $TRAY_BIN"
 install -m 755 "$SCRIPT_DIR/kbd-backlight-tray" "$TRAY_BIN"

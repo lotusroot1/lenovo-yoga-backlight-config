@@ -10,7 +10,7 @@ present=()
 absent=()
 
 for path in "$KBD_BIN" "$SERVICE_FILE" "$MODULES_CONF" "$SUDOERS_FILE" \
-            "$TRAY_BIN" "$TRAY_DESKTOP"; do
+            "$SLEEP_HOOK" "$TRAY_BIN" "$TRAY_DESKTOP"; do
     if [ -e "$path" ]; then
         present+=("$path")
     else
@@ -50,6 +50,9 @@ rm -f "$MODULES_CONF"
 
 echo "==> Removing sudo rule"
 rm -f "$SUDOERS_FILE"
+
+echo "==> Removing suspend/resume hook"
+rm -f "$SLEEP_HOOK"
 
 echo "==> Removing kbd-backlight script"
 rm -f "$KBD_BIN"
