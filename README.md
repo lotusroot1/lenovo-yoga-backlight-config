@@ -169,14 +169,16 @@ sudo ./install.sh [state]     # default startup state: auto
 
 Override startup state: `sudo ./install.sh on`
 
-Installs (paths defined as constants at top of `install.sh`):
+Installs:
 - `/usr/local/bin/kbd-backlight` — control script
 - `/etc/modules-load.d/acpi_call.conf` — loads `acpi_call` at boot
-- `/etc/systemd/system/kbd-backlight.service` — sets state at boot
+- `/etc/systemd/system/kbd-backlight.service` — sets backlight state at boot
 - `/etc/sudoers.d/kbd-backlight` — passwordless sudo for the script
+- `/usr/lib/systemd/system-sleep/kbd-backlight` — saves state before suspend,
+  restores it after resume
 
-> To install to a different prefix, edit the path constants at the top
-> of `install.sh` and `uninstall.sh` before running.
+> All install paths are defined in `config.sh` at the repo root. Edit that
+> file to relocate everything before running any install script.
 
 ### Step 2 — tray app (optional, run as your normal user)
 
@@ -184,22 +186,50 @@ Installs (paths defined as constants at top of `install.sh`):
 cd tray-app && ./install.sh
 ```
 
-Requires Step 1 first. The script checks for its prerequisites and will
-tell you what's missing if Step 1 hasn't been run.
+Requires Step 1 first. The script checks prerequisites and tells you what's
+missing if Step 1 hasn't been run.
 
 Installs:
-- `~/.local/bin/kbd-backlight-tray` — GTK tray icon app
+- `~/.local/bin/kbd-backlight-tray` — GTK system tray app
 - `~/.config/autostart/kbd-backlight-tray.desktop` — autostart at login
+- `~/.local/share/applications/kbd-backlight-tray.desktop` — app menu entry
+  (search "Keyboard Backlight" to relaunch after accidental close)
 
-AppIndicator3 (better Cinnamon tray integration) is optional — the app
-falls back to `Gtk.StatusIcon` if not present:
+Launch immediately after install:
 
-| Distro | Command |
-|---|---|
-| Debian / Ubuntu / Linux Mint | `sudo apt install gir1.2-appindicator3-0.1` |
-| Fedora | `sudo dnf install libappindicator-gtk3` |
+```bash
+~/.local/bin/kbd-backlight-tray &
+```
 
-Launch immediately after install: `~/.local/bin/kbd-backlight-tray &`
+#### Tray app features
+
+- **Right-click menu** shows current state and radio items to switch between
+  Auto / On / Dim / Off
+- **State-based tray icon** — uses `keyboard-brightness-*-symbolic` theme icons
+  if the active theme provides them, falls back to `input-keyboard`
+- **`--icon NAME_OR_PATH`** — override with a fixed icon at launch
+- **Fn+Space detection** — sysfs polled every 1 s (no subprocess, no sudo);
+  triggers a full ACPI read only when a change is detected
+- **Desktop notifications** on external state changes (Fn+Space, terminal,
+  post-resume); debounced 1.5 s so rapid cycling produces one notification
+  for the final state only
+- **Notifications toggle** in the menu — persisted across restarts
+- **Run on startup toggle** in the menu — creates/removes the autostart entry
+- **Suspend/resume** — backlight state saved before sleep and restored on wake
+  by the systemd sleep hook installed in Step 1
+
+#### Optional tray dependencies
+
+| Package | Purpose | Distro install |
+|---|---|---|
+| `gir1.2-appindicator3-0.1` | Better Cinnamon tray integration | `sudo apt install gir1.2-appindicator3-0.1` |
+| `gir1.2-notify-0.7` | Desktop notifications | `sudo apt install gir1.2-notify-0.7` |
+
+Fedora equivalents: `libappindicator-gtk3`, `libnotify`.
+Arch equivalents: `libappindicator-gtk3`, `libnotify`.
+
+The app runs without either — AppIndicator3 falls back to `Gtk.StatusIcon`,
+notifications are silently disabled.
 
 ### Uninstall everything
 
@@ -216,4 +246,5 @@ sudo ./uninstall.sh     # removes system install + tray app
 | `acpi-call-dkms` | Direct ACPI method calls at runtime | Yes |
 | `python3-gi` | GTK bindings for tray app | Tray app only |
 | `gir1.2-appindicator3-0.1` | Better Cinnamon tray integration | Optional |
+| `gir1.2-notify-0.7` | Desktop notifications | Optional |
 | `acpica-tools` | DSDT decompilation (research only) | No |
